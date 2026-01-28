@@ -190,5 +190,5 @@ class BDF4(Explicit_ODE):
         self.log_message(' Number of Function Evaluations : '+str(self.statistics["nfcns"]),         verbose)
             
         self.log_message('\nSolver options:\n',                                    verbose)
-        self.log_message(' Solver            : BDF2',                     verbose)
+        self.log_message(' Solver            : BDF4',                     verbose)
         self.log_message(' Solver type       : Fixed step\n',                      verbose)

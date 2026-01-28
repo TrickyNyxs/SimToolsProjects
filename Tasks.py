@@ -4,6 +4,7 @@ import assimulo.problem as apro
 import matplotlib.pyplot as mpl
 import assimulo.solvers as asol
 import BDF4Solver
+import BDF2Solver 
 
 # Paramters for the elastic pendulum
 m = 1.0      # mass
@@ -21,7 +22,7 @@ def elastic_pendulum(t,y):
     return yvec
 
 # Define Problem 
-initial_conditions = [1.1, 0.0, 0.1, 0.0]  # initial position (x,y) and velocity (vx, vy)
+initial_conditions = [0.0, 1.1, 0.1, 0.0]  # initial position (x,y) and velocity (vx, vy)
 eP_Problem = apro.Explicit_Problem(elastic_pendulum, t0 = 0, y0 = initial_conditions)
 eP_Problem.name = r'Elastic Pendulum (m={m}, k={k}, L0={L0}, g={g})'
 eP_Problem.name = eP_Problem.name.format(m=m, k=k, L0=L0, g=g)
@@ -46,8 +47,18 @@ plt.title(eP_Problem.name)
 plt.grid(True)
 plt.show()
 
-# Own Solution with BDF4
+# Our Solution with BDF4
 exp_sim = BDF4Solver.BDF4(eP_Problem) #Create a BDF solver
+exp_sim.reset()
 t, y = exp_sim.simulate(4)
 exp_sim.plot()
 mpl.show()
+
+
+# Provided BDF2 Solution
+exp_sim3 = BDF2Solver.BDF_2(eP_Problem) #Create a BDF solver
+exp_sim3.reset()
+t, y = exp_sim3.simulate(4)
+exp_sim3.plot()
+mpl.show()
+
