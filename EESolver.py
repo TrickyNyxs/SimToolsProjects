@@ -17,7 +17,7 @@ class Explicit_Euler(Explicit_ODE):
         
         #Solver options
         self.options["h"] = 0.01  # Step size
-        self.maxsteps = 100000  # Instance variable, not class variable
+        self.maxsteps = 1000000  # Instance variable, not class variable
         
         #Statistics
         self.statistics["nsteps"] = 0

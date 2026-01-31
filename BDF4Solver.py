@@ -17,7 +17,7 @@ class BDF4(Explicit_ODE):
         
         #Solver options
         self.options["h"] = 0.01
-        self.maxsteps = 100000  # Instance variable, not class variable
+        self.maxsteps = 1000000  # Instance variable, not class variable
         
         #Statistics
         self.statistics["nsteps"] = 0
@@ -67,7 +67,6 @@ class BDF4(Explicit_ODE):
         t_nm1,t_nm2,t_nm3= t, t, t
         y_nm1,y_nm2,y_nm3= y.copy(), y.copy(), y.copy()
         
-        self.maxsteps = 1000
         for i in range(self.maxsteps):
             if t >= tf:
                 break
