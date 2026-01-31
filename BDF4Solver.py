@@ -67,6 +67,7 @@ class BDF4(Explicit_ODE):
         t_nm1,t_nm2,t_nm3= t, t, t
         y_nm1,y_nm2,y_nm3= y.copy(), y.copy(), y.copy()
         
+        self.maxsteps = 1000
         for i in range(self.maxsteps):
             if t >= tf:
                 break
