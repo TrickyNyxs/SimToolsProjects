@@ -84,7 +84,7 @@ class NewmarkBetaSolver(Explicit_ODE):
         """
 
         f=self.problem.rhs
-        a_n+1
+        a_new = self.step_7(M, f, C, K, )
         
         
         for i in range(self.maxit):
