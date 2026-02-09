@@ -1,10 +1,10 @@
 from assimulo.explicit_ode import Explicit_ODE
-from assimulo.ode import *
+from assimulo.ode import ID_PY_OK, NORMAL
+import inspect
 import numpy as np
-import matplotlib.pyplot as mpl
 import scipy.linalg as SL
-from assimulo.solvers import CVode
-import assimulo.problem as apro
+import scipy.sparse as sps
+import scipy.sparse.linalg as spsl
 
 class NewmarkBetaSolver(Explicit_ODE):
     
@@ -15,11 +15,19 @@ class NewmarkBetaSolver(Explicit_ODE):
     gamma = 0.5
     
     
-    def __init__(self, problem, b, g): #Initialize the class
+    def __init__(self, problem, b, g, K, C, M): #Initialize the class
         Explicit_ODE.__init__(self, problem) #Calls the base class
+
+        if not (0 <= b <= 0.5):
+            raise ValueError("beta must be in [0, 1/2]")
+        if not (0 <= g <= 1):
+            raise ValueError("gamma must be in [0, 1]")
+
         self.beta = b
         self.gamma = g
-        
+        self.K = K
+        self.C = C
+        self.M = M
         
         #Solver options
         self.options["h"] = 0.01
@@ -40,66 +48,54 @@ class NewmarkBetaSolver(Explicit_ODE):
     
     def integrate(self, t, y, tf, opts):
         """
-        _integrates (t,y) values until t > tf
+        Integrates (t,y) until t >= tf.
+        Expected state: y = [u, v] stacked.
         """
-        h = self.options["h"]
-        h = min(h, abs(tf-t))
-        
-        #Lists for storing the result
+        h = min(self.h, abs(tf - t))
+
+        # Lists for storing the result
         tres = []
         yres = []
+
+        t_it = t
+        u_old = y[0]
+        v_old = y[1]
+        a_old = self.step_7(self.M, f, self.C, self.K, u_old, v_old)
         
-        # Initialize historical states to current state (will be overwritten on first iterations)
-        t_nm1,t_nm2,t_nm3= t, t, t
-        y_nm1,y_nm2,y_nm3= y.copy(), y.copy(), y.copy()
-        
-        for i in range(self.maxsteps):
-            if t >= tf:
+
+        for _ in range(self.maxsteps):
+            if t_it >= tf:
                 break
             self.statistics["nsteps"] += 1
-            
-            if i==0:  # initial step
-                t_np1,y_np1 = self.step_EE(t,y, h)
-            elif i==1:
-                t_np1, y_np1 = self.step_BDF2([t, t_nm1], [y, y_nm1], h)
-            elif i==2: 
-                t_np1, y_np1 = self.step_BDF3([t, t_nm1, t_nm2], [y, y_nm1, y_nm2], h)
-            else:   
-                t_np1, y_np1 = self.step_BDF4([t,t_nm1, t_nm2, t_nm3], [y,y_nm1, y_nm2, y_nm3], h)
-            t,t_nm1,t_nm2,t_nm3=t_np1,t,t_nm1,t_nm2
-            y,y_nm1,y_nm2,y_nm3=y_np1,y,y_nm1,y_nm2
-            
-            tres.append(t)
+
+            u, v, a = self.step_Newmark(self, [u_old, v_old, a_old])
+            t_it += h
+
+            y = np.hstack((u, v, a))
+            tres.append(t_it)
             yres.append(y.copy())
-        
-            h=min(self.h,np.abs(tf-t))
+
+            h = min(self.h, abs(tf - t_it))
         else:
-            raise Exception('Final time not reached within maximum number of steps')
-        
+            raise Exception("Final time not reached within maximum number of steps")
+
         return ID_PY_OK, tres, yres
         
-    def step_Newmark(self,T,Y, h):
+        
+    def step_Newmark(self,Y):
         """
         Newmark stepper for second-order ODEs.
         """
 
+        self.statistics["nfcns"] += 1
+        
         f=self.problem.rhs
-        a_new = self.step_7(M, f, C, K, )
+        u_new = self.step_7quote(self, self.M, f, self.C, self.K, Y[0], Y[1], Y[2])
+        v_new = self.step_6quote(self, Y[0], u_new, Y[1], Y[2])
+        a_new = self.step_5quote(self, Y[0], u_new, v_new, Y[2])
         
+        return [u_new, v_new, a_new]
         
-        for i in range(self.maxit):
-            self.statistics["nfcns"] += 1
-            
-            
-        
-            delta_y = SL.solve(J, -G)
-            y_np1_ip1= y_np1_i + delta_y
-            
-            if SL.norm(delta_y) < self.tol:
-                return t_np1,y_np1_ip1
-            y_np1_i=y_np1_ip1
-        else:
-            raise Exception('Corrector could not converge within %d iterations'%i)
         
     def step_7(M, f, C, K, u, v): #Initializer to get u_0''
         return SL.linalg.solve(M, f - C @ v - K @ u)
