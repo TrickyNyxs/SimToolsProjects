@@ -63,7 +63,6 @@ class ExplicitNewmarkBetaSolver(Explicit_ODE):
         u_old = u_old.reshape(-1,1)
         v_old = v_old.reshape(-1,1)
 
-
         # get a from (7)
         a_old = self.step_7(self.M, self.f(t, u_old), self.C, self.K(u_old), u_old, v_old)
      
@@ -82,6 +81,7 @@ class ExplicitNewmarkBetaSolver(Explicit_ODE):
             yres.append(y.copy())
 
             h = min(self.h, abs(tf - t_it))
+            u_old, v_old, a_old = u, v, a
         else:
             raise Exception("Final time not reached within maximum number of steps")
 
@@ -112,6 +112,7 @@ class ExplicitNewmarkBetaSolver(Explicit_ODE):
         
         
     def step_7(self, M, ft, C, K, u, v): #Initializer to get u_0''
+        print(ft)
         return SL.solve(M, ft - C @ v - K @ u)
     
     def step_8(self , u_old, v_old, a_old): #Initializer to get u_0''

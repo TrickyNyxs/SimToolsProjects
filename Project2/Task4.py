@@ -19,7 +19,7 @@ def elastic_pendulum(t,y):
     return yvec
 
 
-initial_conditions = [0.0, 2.0, 0.0, 0.0]  # initial position (x,y) and velocity (vx, vy)
+initial_conditions = [0.0, 1.1, 0.1, 0.0]  # initial position (x,y) and velocity (vx, vy)
 eP_Problem = apro.Explicit_Problem(elastic_pendulum, t0 = 0, y0 = initial_conditions)
 EP2_Problem = EP2(eP_Problem, 2)
 EP2_Problem.name = 'Elastic Pendulum Second Order Problem'
@@ -42,7 +42,7 @@ def f(t,y):
 simulation_time = 20
 
 NBSolverDante = ExplicitNBSolverD(EP2_Problem, M, C, K, f)
-t, y = NBSolverDante.simulate(simulation_time,100)
+t, y = NBSolverDante.simulate(simulation_time,1000)
 NBSolverDante.reset()
 
 plt.figure()
