@@ -4,7 +4,7 @@ import assimulo.problem as apro
 import matplotlib.pyplot as mpl
 import assimulo.solvers as asol
 from Explicit_Problem_2nd import Explicit_Problem_2nd as EP2
-from ExplicitNBSolverDante import ExplicitNewmarkBetaSolver as ExplicitNBSolverD
+from NewmarkBetaSolverDante import NewmarkBetaSolver as NBSolver
 
 # Define first order problem
 k = 10
@@ -41,7 +41,7 @@ def f(t,y):
 # Solve and Simulate 
 simulation_time = 20
 beta, gamma = 0, 0.25
-NBSolverDante = ExplicitNBSolverD(EP2_Problem, M, C, K, f, beta, gamma)
+NBSolverDante = NBSolver(EP2_Problem, M, C, K, f, beta, gamma)
 t, y = NBSolverDante.simulate(simulation_time,1000)
 NBSolverDante.reset()
 

@@ -8,7 +8,7 @@ import scipy.linalg as SL
 import scipy.sparse as sps
 import scipy.sparse.linalg as spsl
 
-class ExplicitNewmarkBetaSolver(Explicit_ODE):
+class NewmarkBetaSolver(Explicit_ODE):
     
     #Define variables
     tol=1.e-8     
@@ -110,9 +110,9 @@ class ExplicitNewmarkBetaSolver(Explicit_ODE):
         
         return [u_new, v_new, a_new]
         
-        
+
+    ####### EXPLITICT PROBLEM FUNCTIONS#######
     def step_7(self, M, ft, C, K, u, v): #Initializer to get u_0''
-        print(ft)
         return SL.solve(M, ft - C @ v - K @ u)
     
     def step_8(self , u_old, v_old, a_old): #Initializer to get u_0''
@@ -121,6 +121,8 @@ class ExplicitNewmarkBetaSolver(Explicit_ODE):
     def step_9(self, v_old, a_old, a_new): #Initializer to get u_0''
         return v_old + (1 - self.gamma)*self.h*a_old + self.gamma*self.h*a_new
 
+
+    ####### IMPLICIT PROBLEM FUNCTIONS#######
     def step_7quote(self, M, ft, C, K, u, v, a): # returns u_{n+1}
         K_eff = M/self.beta/self.h**2 + C*self.gamma/self.beta/self.h + K(u)
         rhs = ft + M @ (1/self.beta/self.h**2 * u + 1/self.beta/self.h * v + (1/2/self.beta - 1) * a) + C @ (self.gamma/self.beta/self.h * u + (self.gamma/self.beta - 1) * v + self.h/2*(self.gamma/self.beta - 2) * a)
