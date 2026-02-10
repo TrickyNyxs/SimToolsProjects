@@ -15,11 +15,11 @@ class ExplicitNewmarkBetaSolver(Explicit_ODE):
     maxit=100
     
     
-    def __init__(self, problem, M, C, K, f): #Initialize the class
+    def __init__(self, problem, M, C, K, f, beta, gamma): #Initialize the class
         Explicit_ODE.__init__(self, problem) #Calls the base class
 
-        self.beta = 0
-        self.gamma = 0.25
+        self.beta = beta
+        self.gamma = gamma
         self.K = K
         self.C = C
         self.M = M

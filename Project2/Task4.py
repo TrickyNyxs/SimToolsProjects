@@ -40,8 +40,8 @@ def f(t,y):
 
 # Solve and Simulate 
 simulation_time = 20
-
-NBSolverDante = ExplicitNBSolverD(EP2_Problem, M, C, K, f)
+beta, gamma = 0, 0.25
+NBSolverDante = ExplicitNBSolverD(EP2_Problem, M, C, K, f, beta, gamma)
 t, y = NBSolverDante.simulate(simulation_time,1000)
 NBSolverDante.reset()
 
