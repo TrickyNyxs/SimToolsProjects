@@ -34,12 +34,11 @@ class Explicit_Problem_2nd(Explicit_Problem):
         """
         Compute acceleration from the original first-order RHS.
         """
-        q, v = self.split_state(y)
         y = np.concatenate((q, v))
         ydot = self.first_order_problem.rhs(t, y)
         return ydot[self.n:]
 
     def rhs(self, t, y):
-        q, v = self.split_state(self, y)
-        a = self.acceleration(t, y)
+        q, v = self.split_state(y)
+        a = self.acceleration(t, q, v)
         return np.concatenate((v, a))
