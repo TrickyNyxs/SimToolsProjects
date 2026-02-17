@@ -28,6 +28,7 @@ class NewmarkBetaSolver(Explicit_ODE):
         self.K = K(problem.initial_conditions)
         self.C = C
         self.M = M
+        self.problem = problem
         
         #Solver options
         self.options["h"] = 0.01
@@ -58,22 +59,24 @@ class NewmarkBetaSolver(Explicit_ODE):
         yres = []
 
         t_it = t
-        u_old = y[0]
-        v_old = y[1]
-        a_old = self.step_7(self.M, f, self.C, self.K, u_old, v_old)
+        u_old, v_old = self.problem.split_state(y)
+        f = self.problem.force_from_state(t_it, y, self.M, self.C, self.K)
+        a_old = self.step_7(self.M , f, self.C , self.K , u_old, v_old)
         
 
         for _ in range(self.maxsteps):
             if t_it >= tf:
                 break
             self.statistics["nsteps"] += 1
-
-            u, v, a = self.step_Newmark(self, [u_old, v_old, a_old])
+            
             t_it += h
-
-            y = np.hstack((u, v, a))
+            f = self.problem.force_from_state(t_it, y, self.M, self.C, self.K)
+            u, v, a = self.step_Newmark([u_old, v_old, a_old], f)
+            
+            y = np.hstack((u, v))
             tres.append(t_it)
             yres.append(y.copy())
+            u_old, v_old, a_old = u, v, a
 
             h = min(self.h, abs(tf - t_it))
         else:
@@ -82,28 +85,32 @@ class NewmarkBetaSolver(Explicit_ODE):
         return ID_PY_OK, tres, yres
         
         
-    def step_Newmark(self,Y):
+    def step_Newmark(self, Y, f):
         """
         Newmark stepper for second-order ODEs.
         """
 
         self.statistics["nfcns"] += 1
         
-        f=self.problem.rhs
-        u_new = self.step_7quote(self, self.M, f, self.C, self.K, Y[0], Y[1], Y[2])
-        v_new = self.step_6quote(self, Y[0], u_new, Y[1], Y[2])
-        a_new = self.step_5quote(self, Y[0], u_new, v_new, Y[2])
+        u_new = self.step_7quote(self.M, f, self.C, self.K, Y[0], Y[1], Y[2])
+        v_new = self.step_6quote(Y[0], u_new, Y[1], Y[2])
+        a_new = self.step_5quote(Y[0], u_new, v_new, Y[2])
         
         return [u_new, v_new, a_new]
         
         
-    def step_7(M, f, C, K, u, v): #Initializer to get u_0''
-        return SL.linalg.solve(M, f - C @ v - K @ u)
+    def step_7(self, M, f, C, K, u, v): #Initializer to get u_0''
+        rhs = f - C @ v - K @ u
+        if sps.issparse(M):
+            return spsl.spsolve(M, rhs)
+        return SL.solve(M, rhs)
     
     def step_7quote(self, M, f, C, K, u, v, a): # returns u_{n+1}
         Eff = M/self.beta/self.h**2 + C*self.gamma/self.beta/self.h + K
         rhs = f + M @ (1/self.beta/self.h**2 * u + 1/self.beta/self.h * v + (1/2/self.beta - 1) * a) + C @ (self.gamma/self.beta/self.h * u + (self.gamma/self.beta - 1) * v + self.h/2*(self.gamma/self.beta - 2) * a)
-        return SL.linalg.solve(Eff, rhs)
+        if sps.issparse(Eff):
+            return spsl.spsolve(Eff, rhs)
+        return SL.solve(Eff, rhs)
     
     def step_6quote(self, u_old, u, v_old, a_old): # returns u_{n+1}'
         return self.gamma/self.beta/self.h*(u-u_old) + (1 -self.gamma/self.beta)*v_old + self.h*(1 - self.gamma/self.beta/2)*a_old

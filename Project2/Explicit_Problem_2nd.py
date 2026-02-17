@@ -42,3 +42,17 @@ class Explicit_Problem_2nd(Explicit_Problem):
         q, v = self.split_state(y)
         a = self.acceleration(t, q, v)
         return np.concatenate((v, a))
+
+    def force(self, t, q, v, M, C, K):
+        """
+        Compute external force f(t) from M q'' + C q' + K q = f.
+        """
+        a = self.acceleration(t, q, v)
+        return M @ a + C @ v + K @ q
+
+    def force_from_state(self, t, y, M, C, K):
+        """
+        Convenience wrapper: compute f(t) given stacked state y=[q,v].
+        """
+        q, v = self.split_state(y)
+        return self.force(t, q, v, M, C, K)
