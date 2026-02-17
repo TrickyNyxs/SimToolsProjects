@@ -79,6 +79,7 @@ class elastodynamic_beam:
 
         # Elastic stiffness form
         self.Stiffness_form = inner(sigma(u), epsilon(v))*dx
+
         # Rayleigh damping form
         self.Dampening_form = self.eta_m*self.Mass_form + self.eta_k*self.Stiffness_form
 
@@ -98,7 +99,7 @@ class elastodynamic_beam:
         pvec = as_vector(pvec)
 
         # right hand side
-        self.External_forces_form = (inner( u, v) - inner(u,v))*dx + inner( v, pvec ) * ds
+        self.External_forces_form = (inner(u, v) - inner(u,v))*dx + inner( v, pvec ) * ds
 
         self.F_ext = galerkinOperator(self.External_forces_form)
 

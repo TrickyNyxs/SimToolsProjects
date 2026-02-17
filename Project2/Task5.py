@@ -5,12 +5,11 @@ originally based on : https://comet-fenics.readthedocs.io/en/latest/demo/elastod
 """
 
 # Import of Solvers
-import NewmarkBetaSolverFelix as BetaSolver
+import NewMarkElasto as BetaSolver
 import Explicit_Problem_2nd as EP2
 # Definition of variables
 beta = 0.25
 gamma = 0.5
-
 
 import os
 # ensure some compilation output for this example
@@ -173,11 +172,19 @@ if __name__ == '__main__':
     beam_problem2 = EP2.Explicit_Problem_2nd(beam_problem, n=beam_class.ndofs)
     beam_problem2.name='Modified Elastodyn example from DUNE-FEM'
 
-    beamCV = BetaSolver.NewmarkBetaSolver(beam_problem2, beta, gamma, beam_class.Stiffness_mat, beam_class.Dampening_mat, beam_class.Mass_mat)
+    # Define K, C M and f
+    K, C, M = beam_class.Stiffness_mat, beam_class.Dampening_mat, beam_class.Mass_mat, 
+
+    def force(t):
+        return beam_class.F
+    
+    # Create Instance of Solver
+    beamCV = BetaSolver.NewmarkBetaSolver(beam_problem2, beta, gamma, K, C, M, force)
     #beamCV = aso.Radau5ODE(beam_problem)
     beamCV.h = 0.05 # constant step size here
     tt, y = beamCV.simulate(t_end)
 
+    # Plot
     disp_tip = []
     plottime = 0
     plotstep = 0.25

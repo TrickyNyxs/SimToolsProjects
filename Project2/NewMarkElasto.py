@@ -15,7 +15,7 @@ class NewmarkBetaSolver(Explicit_ODE):
     gamma = 0.5
     
     
-    def __init__(self, problem, b, g, K, C, M): #Initialize the class
+    def __init__(self, problem, b, g, K, C, M,f): #Initialize the class
         Explicit_ODE.__init__(self, problem) #Calls the base class
 
         if not (0 <= b <= 0.5):
@@ -29,8 +29,7 @@ class NewmarkBetaSolver(Explicit_ODE):
         self.K = K
         self.C = C
         self.M = M
-        
-        
+        self.f = f
         
         #Solver options
         self.options["h"] = 0.01
@@ -59,23 +58,20 @@ class NewmarkBetaSolver(Explicit_ODE):
         # Lists for storing the result
         tres = []
         yres = []
-
+       
         t_it = t
         u_old, v_old = self.problem.split_state(y)
-       
-        f = self.problem.force_from_state(t_it, y, self.M, self.C, self.K)
-        a_old = self.step_7(self.M , f, self.C , self.K , u_old, v_old)
-        
+        a_old = self.step_7(self.M , self.f(t_it), self.C , self.K , u_old, v_old)
+
 
         for _ in range(self.maxsteps):
             if t_it >= tf:
                 break
             self.statistics["nsteps"] += 1
             
-            t_it += h
-            f = self.problem.force_from_state(t_it, y, self.M, self.C, self.K)
-            u, v, a = self.step_Newmark([u_old, v_old, a_old], f)
             
+            u, v, a = self.step_Newmark([u_old, v_old, a_old], self.f(t_it))
+            t_it += h
             # Append Quantitites
             y = np.hstack((u, v))
             tres.append(t_it)
@@ -118,11 +114,17 @@ class NewmarkBetaSolver(Explicit_ODE):
             return spsl.spsolve(Eff, rhs)
         return SL.solve(Eff, rhs)
     
-    def step_6quote(self, u_old, u, v_old, a_old): # returns u_{n+1}'
-        return self.gamma/self.beta/self.h*(u-u_old) + (1 -self.gamma/self.beta)*v_old + self.h*(1 - self.gamma/self.beta/2)*a_old
+    def step_6quote(self, u_old, u, v_old, a_old):
+        return self.gamma/self.beta/self.h*(u-u_old) \
+            + (1 - self.gamma/self.beta)*v_old \
+            + self.h*(1 - self.gamma/self.beta/2)*a_old
+
     
-    def step_5quote(self, u_old, u, v_old, a_old): # returns u_{n+1}''
-        return 1/self.beta/self.h**2*(u-u_old) - 1/self.beta/self.h*v_old - (1/2/self.beta - 1)*a_old
+    def step_5quote(self, u_old, u, v_old, a_old):
+        return 1/self.beta/self.h**2*(u-u_old) \
+            - 1/self.beta/self.h*v_old \
+            - (1/2/self.beta - 1)*a_old
+
     
     
     def print_statistics(self, verbose=NORMAL):
