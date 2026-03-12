@@ -5,11 +5,14 @@ originally based on : https://comet-fenics.readthedocs.io/en/latest/demo/elastod
 """
 
 # Import of Solvers
-import NewMarkElasto as BetaSolver
+import NewmarkbetaElasto as BetaSolver
+import HHTalphaSolverElasto as HHTSolver
 import Explicit_Problem_2nd as EP2
 # Definition of variables
-beta = 0.25
-gamma = 0.5
+
+gamma = 0.6
+beta = 0.25*(gamma + 0.5)**2
+alpha = -0.3
 
 import os
 # ensure some compilation output for this example
@@ -43,8 +46,8 @@ class elastodynamic_beam:
     rho = Constant(1.0, name="rho")
 
     # Rayleigh damping coefficients
-    eta_m = Constant(0.0, name="eta_m")
-    eta_k = Constant(0.0, name="eta_k")
+    eta_m = Constant(0.2, name="eta_m")
+    eta_k = Constant(0.02, name="eta_k")
 
     def __init__(self, gridsize, T = 4.0, dimgrid=2):
 
@@ -83,7 +86,6 @@ class elastodynamic_beam:
 
         # Mass form
         self.Mass_form = self.rho * inner( u, v ) * dx
-
         # Elastic stiffness form
         self.Stiffness_form = inner(sigma(u), epsilon(v))*dx
         # Rayleigh damping form
@@ -167,24 +169,27 @@ if __name__ == '__main__':
     import assimulo.solvers as aso
     import assimulo.ode as aode
 
+    # Use a separate zero damping matrix for CVODE comparison
+    C_0 = ssp.csc_matrix(beam_class.Dampening_mat.shape)
+
+    def rhs_cvode(t, y):
+        Ft = t*beam_class.F if t < beam_class.cutoff_Tc else np.zeros(beam_class.ndofs)
+        return np.hstack((y[beam_class.ndofs:],
+                          ssl.spsolve(beam_class.Mass_mat,
+                                      -beam_class.Stiffness_mat@y[:beam_class.ndofs]
+                                      -C_0@y[beam_class.ndofs:]
+                                      + Ft)))
+
     # y , ydot
-    beam_problem = aode.Explicit_Problem(beam_class.rhs,y0=np.zeros((2*beam_class.ndofs,)))
+    beam_problem = aode.Explicit_Problem(rhs_cvode, y0=np.zeros((2*beam_class.ndofs,)))
     beam_problem2 = EP2.Explicit_Problem_2nd(beam_problem, n=beam_class.ndofs)
     beam_problem2.name='Modified Elastodyn example from DUNE-FEM'
-
-    # Define K, C M and f
-    K, C, M = beam_class.Stiffness_mat, beam_class.Dampening_mat, beam_class.Mass_mat, 
-
-    def force(t):
-        return beam_class.F
     
-    # Create Instance of Solver
-    beamCV = BetaSolver.NewmarkBetaSolver(beam_problem2, beta, gamma, K, C, M, force)
+    beamCV = aso.ImplicitEuler(beam_problem) # CVode solver instance
     #beamCV = aso.Radau5ODE(beam_problem)
     beamCV.h = 0.05 # constant step size here
     tt, y = beamCV.simulate(t_end)
 
-    # Plot
     disp_tip = []
     plottime = 0
     plotstep = 0.25
@@ -192,11 +197,88 @@ if __name__ == '__main__':
         disp_tip.append(beam_class.evaluateAt(y[i], [1, 0.05]))
         if t > plottime:
             print(f"Beam position at t={t}")
-            beam_class.plotBeam( y[i] )
+            #beam_class.plotBeam( y[i] )
             plottime += plotstep
+
+    disp_tip_cvode = np.array(disp_tip)
 
     pl.figure()
     pl.plot(tt, disp_tip, '-b')
-    pl.title('Displacement of beam tip over time')
+    pl.title('Displacement of beam tip over time (CVODE)')
     pl.xlabel('t')
-    pl.savefig('displacement.png', dpi = 200)
+    pl.savefig('displacement_CVODE.png', dpi = 200)
+
+    # Define K, C M and f
+    K, C, M = beam_class.Stiffness_mat, beam_class.Dampening_mat, beam_class.Mass_mat, 
+
+    def force(t):
+        # return beam_class.F
+        # Apply time-dependent force: ramps up linearly during cutoff_Tc, then constant
+        Ft = t*beam_class.F if t < beam_class.cutoff_Tc else np.zeros(beam_class.ndofs)
+        return Ft
+    
+    # Create Instance of NewmarkBetaSolver
+    beamCV = BetaSolver.NewmarkBetaSolver(beam_problem2, beta, gamma, K, C, M, force)
+    #beamCV = aso.Radau5ODE(beam_problem)
+    beamCV.h = 0.05 # constant step size here
+    ttN, yN = beamCV.simulate(t_end)
+    
+    # Plot
+    disp_tip = []
+    plottime = 0
+    plotstep = 0.25
+    for i, t in enumerate(ttN):
+        disp_tip.append(beam_class.evaluateAt(yN[i], [1, 0.05]))
+        if t > plottime:
+            print(f"Beam position at t={t}")
+            #beam_class.plotBeam( yN[i] )
+            plottime += plotstep
+
+    disp_tip_newmark = np.array(disp_tip)
+
+    pl.figure()
+    pl.plot(ttN, disp_tip, '-b')
+    pl.title('Displacement of beam tip over time (Newmark-β)')
+    pl.xlabel('t')
+    pl.savefig('displacement_Newmark.png', dpi = 200)
+    
+    # Create Instance of HHTalphaSolver
+    beamCV = HHTSolver.HHTalphaSolverElasto(beam_problem2, alpha, K, C, M, force)
+    #beamCV = aso.Radau5ODE(beam_problem)
+    beamCV.h = 0.05 # constant step size here
+    ttH, yH = beamCV.simulate(t_end)
+
+    # Plot
+    disp_tip = []
+    plottime = 0
+    plotstep = 0.25
+    for i, t in enumerate(ttH):
+        disp_tip.append(beam_class.evaluateAt(yH[i], [1, 0.05]))
+        if t > plottime:
+            print(f"Beam position at t={t}")
+            #beam_class.plotBeam( yH[i] )
+            plottime += plotstep
+
+    disp_tip_hht = np.array(disp_tip)
+
+    pl.figure()
+    pl.plot(ttH, disp_tip, '-b')
+    pl.title('Displacement of beam tip over time (HHT-α)')
+    pl.xlabel('t')
+    pl.savefig('displacement_HHT.png', dpi = 200)
+
+    pl.figure()
+    pl.plot(tt, disp_tip_cvode, label='CVODE ImplicitEuler (C_0)', linewidth=2)
+    pl.plot(ttN, disp_tip_newmark, label='Newmark-β (C)', linewidth=2)
+    pl.plot(ttH, disp_tip_hht, label='HHT-α (C)', linewidth=2)
+    pl.title('Beam Tip Displacement Comparison')
+    pl.xlabel('t')
+    pl.ylabel('tip displacement (y)')
+    pl.grid(True)
+    pl.legend()
+    pl.tight_layout()
+    pl.savefig('displacement_combined.png', dpi=200)
+    
+    print(f"Max absolute error: {np.max(np.abs(yN - yH)):.2e}")
+    print(f"Mean absolute error: {np.mean(np.abs(yN - yH)):.2e}")
+    print(f"L2 error norm: {np.linalg.norm(yN - yH):.2e}")

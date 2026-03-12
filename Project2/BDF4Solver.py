@@ -35,8 +35,10 @@ class BDF4(Explicit_ODE):
         """
         Compute the Jacobian using finite differences.
         Works for any function without requiring analytical derivatives.
+        
+        Uses an adaptive epsilon based on the magnitude of y to avoid
+        both truncation and round-off errors.
         """
-        eps = 1e-8
         n = len(y)
         J = np.zeros((n, n))
         
@@ -45,6 +47,10 @@ class BDF4(Explicit_ODE):
         
         # Finite difference for each column
         for j in range(n):
+            # Adaptive epsilon: sqrt(machine eps) * max(|y_j|, 1)
+            # This balances truncation error and round-off error
+            eps = np.sqrt(np.finfo(float).eps) * max(abs(y[j]), 1.0)
+            
             y_perturbed = y.copy()
             y_perturbed[j] += eps
             f_perturbed = self.problem.rhs(t, y_perturbed)
@@ -63,30 +69,58 @@ class BDF4(Explicit_ODE):
         tres = []
         yres = []
         
-        # Initialize historical states to current state (will be overwritten on first iterations)
-        t_nm1,t_nm2,t_nm3= t, t, t
-        y_nm1,y_nm2,y_nm3= y.copy(), y.copy(), y.copy()
+        # Store current and historical states
+        # These will be properly populated as we take steps
+        t_current = t
+        y_current = y.copy()
+        
+        # History arrays (will be filled during startup)
+        t_hist = [t]  # t_hist[0] = t_n, [-1] = t_{n-1}, [-2] = t_{n-2}, etc.
+        y_hist = [y.copy()]
         
         for i in range(self.maxsteps):
-            if t >= tf:
+            if t_current >= tf:
                 break
             self.statistics["nsteps"] += 1
             
-            if i==0:  # initial step
-                t_np1,y_np1 = self.step_EE(t,y, h)
-            elif i==1:
-                t_np1, y_np1 = self.step_BDF2([t, t_nm1], [y, y_nm1], h)
-            elif i==2: 
-                t_np1, y_np1 = self.step_BDF3([t, t_nm1, t_nm2], [y, y_nm1, y_nm2], h)
-            else:   
-                t_np1, y_np1 = self.step_BDF4([t,t_nm1, t_nm2, t_nm3], [y,y_nm1, y_nm2, y_nm3], h)
-            t,t_nm1,t_nm2,t_nm3=t_np1,t,t_nm1,t_nm2
-            y,y_nm1,y_nm2,y_nm3=y_np1,y,y_nm1,y_nm2
+            # Choose method based on available history
+            if i == 0:  # initial step - use Explicit Euler
+                t_np1, y_np1 = self.step_EE(t_current, y_current, h)
+                
+            elif i == 1:  # one history point available - use BDF2
+                t_np1, y_np1 = self.step_BDF2(
+                    [t_hist[-1], t_hist[-2]], 
+                    [y_hist[-1], y_hist[-2]], 
+                    h
+                )
+                
+            elif i == 2:  # two history points available - use BDF3
+                t_np1, y_np1 = self.step_BDF3(
+                    [t_hist[-1], t_hist[-2], t_hist[-3]], 
+                    [y_hist[-1], y_hist[-2], y_hist[-3]], 
+                    h
+                )
+                
+            else:  # three or more history points - use BDF4
+                t_np1, y_np1 = self.step_BDF4(
+                    [t_hist[-1], t_hist[-2], t_hist[-3], t_hist[-4]], 
+                    [y_hist[-1], y_hist[-2], y_hist[-3], y_hist[-4]], 
+                    h
+                )
             
-            tres.append(t)
-            yres.append(y.copy())
+            # Update current state
+            t_current = t_np1
+            y_current = y_np1.copy()
+            
+            # Add to history (most recent at end)
+            t_hist.append(t_current)
+            y_hist.append(y_current)
+            
+            # Store results
+            tres.append(t_current)
+            yres.append(y_current)
         
-            h=min(self.h,np.abs(tf-t))
+            h = min(self.h, np.abs(tf - t_current))
         else:
             raise Exception('Final time not reached within maximum number of steps')
         
@@ -103,7 +137,7 @@ class BDF4(Explicit_ODE):
         
     def step_BDF2(self,T,Y, h):
         """
-        BDF-2 with Fixed Point Iteration and Zero order predictor
+        BDF-2 with Newton's method
         
         alpha_0*y_np1+alpha_1*y_n+alpha_2*y_nm1=h f(t_np1,y_np1)
         alpha=[3/2,-2,1/2]
@@ -116,25 +150,32 @@ class BDF4(Explicit_ODE):
         # predictor
         t_np1=t_n+h
         y_np1_i=y_n   # zero order predictor
-        # corrector with fixed point iteration
+        
+        # Newton iteration
         for i in range(self.maxit):
             self.statistics["nfcns"] += 1
             
+            # Evaluate function at current iterate
+            f_val = f(t_np1, y_np1_i)
+            
             # Define the residual
-            G = alpha[0]*y_np1_i - h*f(t_np1,y_np1_i) + alpha[1]*y_n + alpha[2]*y_nm1
-            #Define the Jacobian of the residual
-            J = alpha[0]*np.eye(len(y_n)) - h*self.jacobian_fd(t_np1,y_np1_i)
+            G = alpha[0]*y_np1_i - h*f_val + alpha[1]*y_n + alpha[2]*y_nm1
+            
+            res_norm = SL.norm(G)
+            # Check convergence before computing expensive Jacobian
+            if res_norm < self.tol:
+                return t_np1, y_np1_i
+            
+            # Define the Jacobian of the residual
+            J = alpha[0]*np.eye(len(y_n)) - h*self.jacobian_fd(t_np1, y_np1_i)
         
             delta_y = SL.solve(J, -G)
-            y_np1_ip1= y_np1_i + delta_y
-            
-            if SL.norm(delta_y) < self.tol:
-                return t_np1,y_np1_ip1
-            y_np1_i=y_np1_ip1
+            y_np1_i = y_np1_i + delta_y
         else:
-            raise Exception('Corrector could not converge within %d iterations'%i)
+            raise Exception('Corrector could not converge within %d iterations (res_norm=%e)' % (i, res_norm))
     
     def step_BDF3(self,T,Y, h):
+        """BDF-3 with Newton's method"""
         alpha = [11./6., -3., 3./2., -1./3.]
         
         t_n, t_nm1, t_nm2 = T
@@ -142,24 +183,31 @@ class BDF4(Explicit_ODE):
         # predictor
         t_np1 = t_n + h
         y_np1_i = y_n  # zero order predictor
-        # corrector with fixed point iteration
+        
+        # Newton iteration
         for i in range(self.maxit):
             self.statistics["nfcns"] += 1
             
-            #Define the residual
-            G = alpha[0]*y_np1_i - h*self.problem.rhs(t_np1,y_np1_i) + alpha[1]*y_n + alpha[2]*y_nm1 + alpha[3]*y_nm2
-            #Define the Jacobian of the residual
-            J = alpha[0]*np.eye(len(y_n)) - h*self.jacobian_fd(t_np1,y_np1_i)
+            # Evaluate function at current iterate
+            f_val = self.problem.rhs(t_np1, y_np1_i)
+            
+            # Define the residual
+            G = alpha[0]*y_np1_i - h*f_val + alpha[1]*y_n + alpha[2]*y_nm1 + alpha[3]*y_nm2
+            
+            # Check convergence before computing expensive Jacobian
+            if SL.norm(G) < self.tol:
+                return t_np1, y_np1_i
+            
+            # Define the Jacobian of the residual
+            J = alpha[0]*np.eye(len(y_n)) - h*self.jacobian_fd(t_np1, y_np1_i)
             
             delta_y = SL.solve(J, -G)
-            y_np1_ip1 = y_np1_i + delta_y
-            if SL.norm(delta_y) < self.tol:
-                return t_np1, y_np1_ip1
-            y_np1_i = y_np1_ip1
+            y_np1_i = y_np1_i + delta_y
         else:
             raise Exception('Corrector could not converge within %d iterations' % i)
         
     def step_BDF4(self,T,Y, h):
+        """BDF-4 with Newton's method"""
         alpha = [25./12., -4., 3., -4./3., 1./4.]
         
         t_n, t_nm1, t_nm2, t_nm3 = T
@@ -167,22 +215,29 @@ class BDF4(Explicit_ODE):
         # predictor
         t_np1 = t_n + h
         y_np1_i = y_n  # zero order predictor
-        # corrector with fixed point iteration
+        
+        # Newton iteration
         for i in range(self.maxit):
             self.statistics["nfcns"] += 1
             
-            #Define the residual
-            G = alpha[0]*y_np1_i - h*self.problem.rhs(t_np1,y_np1_i) + alpha[1]*y_n + alpha[2]*y_nm1 + alpha[3]*y_nm2 + alpha[4]*y_nm3
-            #Define the Jacobian of the residual
-            J = alpha[0]*np.eye(len(y_n)) - h*self.jacobian_fd(t_np1,y_np1_i)
+            # Evaluate function at current iterate
+            f_val = self.problem.rhs(t_np1, y_np1_i)
+            
+            # Define the residual
+            G = alpha[0]*y_np1_i - h*f_val + alpha[1]*y_n + alpha[2]*y_nm1 + alpha[3]*y_nm2 + alpha[4]*y_nm3
+            
+            res_norm = SL.norm(G)
+            # Check convergence before computing expensive Jacobian
+            if res_norm < self.tol:
+                return t_np1, y_np1_i
+            
+            # Define the Jacobian of the residual
+            J = alpha[0]*np.eye(len(y_n)) - h*self.jacobian_fd(t_np1, y_np1_i)
             
             delta_y = SL.solve(J, -G)
-            y_np1_ip1 = y_np1_i + delta_y
-            if SL.norm(delta_y) < self.tol:
-                return t_np1, y_np1_ip1
-            y_np1_i = y_np1_ip1
+            y_np1_i = y_np1_i + delta_y
         else:
-            raise Exception('Corrector could not converge within %d iterations' % i)
+            raise Exception('Corrector could not converge within %d iterations (res_norm=%e)' % (i, res_norm))
     
     def print_statistics(self, verbose=NORMAL):
         self.log_message('Final Run Statistics            : {name} \n'.format(name=self.problem.name),        verbose)
